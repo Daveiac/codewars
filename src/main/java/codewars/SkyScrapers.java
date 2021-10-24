@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -12,13 +13,18 @@ public class SkyScrapers {
 
   private static final Random RANDOM = new Random();
   private static int[][][] lines;
-  private static int[][] permutations;
+  private static int[][] permutationsWithoutRepeats;
+  private static int[][] permutationsWithRepeats;
+  private static List<List<Integer>> validRows;
+  private static List<Map<int[], Integer>> columnErrors;
 
   static int[][] solvePuzzle(int[] clues) {
     int n = clues.length / 4;
     lines = createLineIndices(n);
-    List<Integer> values = IntStream.range(0, n).boxed().collect(Collectors.toList());
-    permutations = calculatePermutations(n, values);
+    permutationsWithoutRepeats = calculatePermutationsWithoutRepeats(n);
+    permutationsWithRepeats = calculatePermutationsWithRepeats(n);
+    validRows = calculateValidRows(n, clues);
+    columnErrors = calculateColumnErrors(n, clues);
     var board = createRandomBoard(n);
     while (true) {
       int errors = calculateErrors(board, clues);
@@ -29,20 +35,69 @@ public class SkyScrapers {
     }
   }
 
+  private static int[][] calculatePermutationsWithRepeats(int n) {
+  }
+
+  private static List<List<Integer>> calculateValidRows(int n, int[] clues) {
+    List<List<Integer>> validRows = new ArrayList<>(n);
+    for (int i = 0; i < n; i++) {
+      validRows.add(new ArrayList<>());
+    }
+    for (int i = 0; i < permutationsWithoutRepeats.length; i++) {
+      int[] permutation = permutationsWithoutRepeats[i];
+      for (int j = 0; j < n; j++) {
+        int errors = calculateLineErrors(permutation, clues[n * 4 - j], clues[n * 2 + j]);
+        if (errors == 0) {
+          validRows.get(j).add(i);
+        }
+      }
+    }
+    return validRows;
+  }
+
+  private static List<Map<int[], Integer>> calculateColumnErrors(int n, int[] clues) {
+    List<Map<int[], Integer>> columnErrors = new ArrayList<>(n);
+    for (int i = 0; i < n; i++) {
+      
+    }
+  }
+
+  private static int calculateLineErrors(int[] line, int forwards, int backwards) {
+    if (forwards == 0 && backwards == 0) {
+      return 0;
+    }
+    int errors = 0;
+
+    int maxF = 0;
+    int countF = 0;
+    int maxB = 0;
+    int countB = 0;
+    int n = line.length;
+    for (int i = 0; i < n; i++) {
+      int start = line[i];
+      if (forwards > 0 && start > maxF) {
+        countF++;
+        maxF = start;
+      }
+      int end = line[n - i - 1];
+      if (backwards > 0 && end > maxB) {
+        countB++;
+        maxB = end;
+      }
+    }
+    errors += Math.abs(forwards - countF);
+    errors += Math.abs(backwards - countB);
+    return errors;
+  }
+
   private static void minimizeConflicts(int[][] board, int errors, int[] clues) {
 
     for (int[][] line : lines) {
       List<int[][]> neighbours = new ArrayList<>();
-      for (int[] permutation : permutations) {
+      for (int[] permutation : permutationsWithoutRepeats) {
         int[][] neighbour = createBoard(board, line, permutation);
         neighbours.add(neighbour);
       }
-      for (int[][] neighbour : neighbours) {
-        printBoard(neighbour);
-        System.out.println();
-
-      }
-      System.exit(0);
     }
   }
 
@@ -50,6 +105,7 @@ public class SkyScrapers {
     for (int i = 0; i < board.length; i++) {
       System.out.println(Arrays.toString(board[i]));
     }
+    System.out.println();
   }
 
   private static int[][] createBoard(int[][] board, int[][] line, int[] permutation) {
@@ -90,13 +146,14 @@ public class SkyScrapers {
     return indices;
   }
 
-  private static int[][] calculatePermutations(int n, List<Integer> values) {
+  private static int[][] calculatePermutationsWithoutRepeats(int n) {
+    List<Integer> values = IntStream.range(0, n).boxed().collect(Collectors.toList());
     ArrayList<int[]> permutationsList = new ArrayList<>();
-    calculatePermutations(new int[n], 0, values, permutationsList);
+    calculatePermutationsWithoutRepeats(new int[n], 0, values, permutationsList);
     return permutationsList.toArray(new int[0][]);
   }
 
-  private static void calculatePermutations(
+  private static void calculatePermutationsWithoutRepeats(
       int[] permutation, int index, List<Integer> values, ArrayList<int[]> result) {
     if (index == permutation.length - 1) {
       permutation[index] = values.get(0);
@@ -106,7 +163,7 @@ public class SkyScrapers {
       List<Integer> newValues = new ArrayList<>(values);
       Integer value = newValues.remove(i);
       permutation[index] = value;
-      calculatePermutations(permutation, index + 1, newValues, result);
+      calculatePermutationsWithoutRepeats(permutation, index + 1, newValues, result);
     }
   }
 
