@@ -3,6 +3,8 @@ package codewars;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -12,54 +14,44 @@ import java.util.stream.IntStream;
 public class SkyScrapers {
 
   private static final Random RANDOM = new Random();
-  private static int[][][] lines;
   private static int[][] permutationsWithoutRepeats;
-  private static int[][] permutationsWithRepeats;
-  private static List<List<Integer>> validRows;
+  private static int[][] validRows;
   private static List<Map<int[], Integer>> columnErrors;
+  private static int[] TEMP_COLUMN;
+  private static int N;
 
   static int[][] solvePuzzle(int[] clues) {
-    int n = clues.length / 4;
-    lines = createLineIndices(n);
-    permutationsWithoutRepeats = calculatePermutationsWithoutRepeats(n);
-    permutationsWithRepeats = calculatePermutationsWithRepeats(n);
-    validRows = calculateValidRows(n, clues);
-    columnErrors = calculateColumnErrors(n, clues);
-    var board = createRandomBoard(n);
-    while (true) {
-      int errors = calculateErrors(board, clues);
-      if (errors == 0) {
-        return board;
-      }
-      minimizeConflicts(board, errors, clues);
-    }
+    N = clues.length / 4;
+    TEMP_COLUMN = new int[N];
+    permutationsWithoutRepeats = calculatePermutationsWithoutRepeats();
+    validRows = calculateValidRows(clues);
+    columnErrors = new ArrayList<>(N);
+    IntStream.range(0, N).forEach(i -> columnErrors.add(new HashMap<>()));
+    var board = createRandomBoardWithValidRows();
+    return getSolution(clues, new int[N][N], 0);
   }
 
-  private static int[][] calculatePermutationsWithRepeats(int n) {
-  }
-
-  private static List<List<Integer>> calculateValidRows(int n, int[] clues) {
-    List<List<Integer>> validRows = new ArrayList<>(n);
-    for (int i = 0; i < n; i++) {
+  private static int[][] calculateValidRows(int[] clues) {
+    List<List<Integer>> validRows = new ArrayList<>(N);
+    for (int i = 0; i < N; i++) {
       validRows.add(new ArrayList<>());
     }
     for (int i = 0; i < permutationsWithoutRepeats.length; i++) {
       int[] permutation = permutationsWithoutRepeats[i];
-      for (int j = 0; j < n; j++) {
-        int errors = calculateLineErrors(permutation, clues[n * 4 - j], clues[n * 2 + j]);
+      for (int j = 0; j < N; j++) {
+        int forwards = clues[N * 4 - j - 1];
+        int backwards = clues[N + j];
+        int errors = calculateLineErrors(permutation, forwards, backwards);
         if (errors == 0) {
           validRows.get(j).add(i);
         }
       }
     }
-    return validRows;
-  }
-
-  private static List<Map<int[], Integer>> calculateColumnErrors(int n, int[] clues) {
-    List<Map<int[], Integer>> columnErrors = new ArrayList<>(n);
-    for (int i = 0; i < n; i++) {
-      
+    int[][] validRowsArray = new int[N][];
+    for (int i = 0; i < N; i++) {
+      validRowsArray[i] = validRows.get(i).stream().mapToInt(Integer::intValue).toArray();
     }
+    return validRowsArray;
   }
 
   private static int calculateLineErrors(int[] line, int forwards, int backwards) {
@@ -67,19 +59,19 @@ public class SkyScrapers {
       return 0;
     }
     int errors = 0;
-
     int maxF = 0;
     int countF = 0;
     int maxB = 0;
     int countB = 0;
-    int n = line.length;
-    for (int i = 0; i < n; i++) {
+    BitSet bitSet = new BitSet(N);
+    for (int i = 0; i < N; i++) {
       int start = line[i];
+      bitSet.set(start);
       if (forwards > 0 && start > maxF) {
         countF++;
         maxF = start;
       }
-      int end = line[n - i - 1];
+      int end = line[N - i - 1];
       if (backwards > 0 && end > maxB) {
         countB++;
         maxB = end;
@@ -87,69 +79,86 @@ public class SkyScrapers {
     }
     errors += Math.abs(forwards - countF);
     errors += Math.abs(backwards - countB);
+    errors += N - bitSet.cardinality();
     return errors;
   }
 
-  private static void minimizeConflicts(int[][] board, int errors, int[] clues) {
-
-    for (int[][] line : lines) {
-      List<int[][]> neighbours = new ArrayList<>();
-      for (int[] permutation : permutationsWithoutRepeats) {
-        int[][] neighbour = createBoard(board, line, permutation);
-        neighbours.add(neighbour);
+  private static int[][] minimizeConflicts(int[][] board, int errors, int[] clues) {
+    int minErrors = errors;
+    List<int[][]> bestBoards = new ArrayList<>();
+    for (int row = 0; row < N; row++) {
+      for (int validRow : validRows[row]) {
+        int[][] neighbour = createBoard(board, row, permutationsWithoutRepeats[validRow]);
+        int neighbourErrors = calculateErrors(neighbour, clues);
+        if (neighbourErrors < minErrors) {
+          bestBoards.clear();
+          bestBoards.add(neighbour);
+          minErrors = neighbourErrors;
+        } else if (neighbourErrors == minErrors) {
+          bestBoards.add(neighbour);
+        }
       }
     }
+    int size = bestBoards.size();
+    return bestBoards.get(RANDOM.nextInt(size));
   }
 
-  private static void printBoard(int[][] board) {
-    for (int i = 0; i < board.length; i++) {
-      System.out.println(Arrays.toString(board[i]));
+  public static int[][] getSolution(int[] clues, int[][] board, int row) {
+    for (int validRow : validRows[row]) {
+      int[][] newBoard = copyBoard(board);
+      newBoard[row] = permutationsWithoutRepeats[validRow];
+      if (row == N - 1) {
+        int errors = calculateErrors(newBoard, clues);
+        if (errors == 0) {
+          return newBoard;
+        }
+      } else {
+        int[][] newSolution = getSolution(clues, newBoard, row + 1);
+        if (newSolution != null) {
+          return newSolution;
+        }
+      }
     }
+    return null;
+  }
+
+  private static void printBoard(int[][] board, int[] clues) {
+    System.out.println("  " + Arrays.toString(clues) + "\n");
+    System.out
+        .println("  " + Arrays.toString(Arrays.copyOf(clues, N)).replaceAll("[\\[\\],]", " "));
+    for (int i = 0; i < board.length; i++) {
+      int[] ints = board[i];
+      System.out.print(clues[N * 4 - i - 1] + " ");
+      System.out.print(Arrays.toString(ints));
+      System.out.println(" " + clues[N + i]);
+    }
+    var list = Arrays.stream(Arrays.copyOfRange(clues, N * 2, N * 3)).boxed()
+        .collect(Collectors.toList());
+    Collections.reverse(list);
+    System.out.println("  " + list.toString().replaceAll("[\\[\\],]", " "));
     System.out.println();
   }
 
-  private static int[][] createBoard(int[][] board, int[][] line, int[] permutation) {
+  private static int[][] createBoard(int[][] board, int row, int[] validRow) {
     int[][] newBoard = copyBoard(board);
-    for (int i = 0; i < line.length; i++) {
-      int x = line[i][0];
-      int y = line[i][1];
-      board[y][x] = permutation[i];
-    }
+    newBoard[row] = validRow;
     return newBoard;
   }
 
   private static int[][] copyBoard(int[][] board) {
-    int n = board.length;
-    int[][] newBoard = new int[n][];
-    for (int i = 0; i < n; i++) {
+    int[][] newBoard = new int[N][];
+    for (int i = 0; i < N; i++) {
       int[] line = board[i];
-      newBoard[i] = new int[n];
-      System.arraycopy(line, 0, newBoard[i], 0, n);
+      newBoard[i] = new int[N];
+      System.arraycopy(line, 0, newBoard[i], 0, N);
     }
     return newBoard;
   }
 
-  private static int[][][] createLineIndices(int n) {
-    int[][][] indices = new int[n + n][n][2];
-    for (int i = 0; i < n; i++) {
-      for (int j = 0; j < n; j++) {
-        indices[i][j][0] = j;
-        indices[i][j][1] = i;
-      }
-    }
-    for (int i = n; i < n + n; i++) {
-      for (int j = 0; j < n; j++) {
-        indices[i][j][0] = i - n;
-        indices[i][j][1] = j;
-      }
-    }
-    return indices;
-  }
-
-  private static int[][] calculatePermutationsWithoutRepeats(int n) {
-    List<Integer> values = IntStream.range(0, n).boxed().collect(Collectors.toList());
+  private static int[][] calculatePermutationsWithoutRepeats() {
+    List<Integer> values = IntStream.rangeClosed(1, N).boxed().collect(Collectors.toList());
     ArrayList<int[]> permutationsList = new ArrayList<>();
-    calculatePermutationsWithoutRepeats(new int[n], 0, values, permutationsList);
+    calculatePermutationsWithoutRepeats(new int[N], 0, values, permutationsList);
     return permutationsList.toArray(new int[0][]);
   }
 
@@ -167,114 +176,27 @@ public class SkyScrapers {
     }
   }
 
-  private static int[][][] createNeighbours(int[][] solution) {
-    int n = solution.length;
-    var neighbours = new int[n][n][n];
-    for (int i = 0; i < n; i++) {
-      var neighbour = cloneArray(solution);
-      shuffleArray(neighbour[i]);
-      neighbours[i] = neighbour;
-    }
-    return neighbours;
-  }
-
   private static int calculateErrors(int[][] solution, int[] clues) {
-    if ("1".equals("1")) {
-      return 1;
-    }
-    int n = solution.length;
     int errors = 0;
-    for (int x = 0; x < n; x++) {
-      var bitSet = new BitSet(n);
-      for (int[] row : solution) {
-        bitSet.set(row[x] - 1);
+    for (int col = 0; col < N; col++) {
+      for (int row = 0; row < N; row++) {
+        TEMP_COLUMN[row] = solution[row][col];
       }
-      errors += n - bitSet.cardinality();
+      int forwards = clues[col];
+      int backwards = clues[N * 3 - col - 1];
+      int colErrors = columnErrors.get(col).computeIfAbsent(TEMP_COLUMN,
+          a -> calculateLineErrors(TEMP_COLUMN, forwards, backwards));
+      errors += colErrors;
     }
-    int clueIndex = 0;
-
-    //Top to bottom
-    for (int x = 0; x < n; x++) {
-      int count = 0;
-      int max = 0;
-      int clue = clues[clueIndex++];
-      if (clue == 0) {
-        continue;
-      }
-      for (int y = 0; y < n; y++) {
-        if (solution[y][x] > max) {
-          count++;
-          max = solution[y][x];
-        }
-      }
-      int error = Math.abs(count - clue);
-      errors += error;
-    }
-
-    //Right to left
-    for (int y = 0; y < n; y++) {
-      int count = 0;
-      int max = 0;
-      int clue = clues[clueIndex++];
-      if (clue == 0) {
-        continue;
-      }
-      for (int x = n - 1; x >= 0; x--) {
-        if (solution[y][x] > max) {
-          count++;
-          max = solution[y][x];
-        }
-      }
-      int error = Math.abs(count - clue);
-      errors += error;
-    }
-
-    //Bottom to top
-    for (int x = n - 1; x >= 0; x--) {
-      int count = 0;
-      int max = 0;
-      int clue = clues[clueIndex++];
-      if (clue == 0) {
-        continue;
-      }
-      for (int y = n - 1; y >= 0; y--) {
-        if (solution[y][x] > max) {
-          count++;
-          max = solution[y][x];
-        }
-      }
-      int error = Math.abs(count - clue);
-      errors += error;
-    }
-
-    //Left to right
-    for (int y = n - 1; y >= 0; y--) {
-      int count = 0;
-      int max = 0;
-      int clue = clues[clueIndex++];
-      if (clue == 0) {
-        continue;
-      }
-      for (int x = 0; x < n; x++) {
-        if (solution[y][x] > max) {
-          count++;
-          max = solution[y][x];
-        }
-      }
-      int error = Math.abs(count - clue);
-      errors += error;
-    }
-
     return errors;
   }
 
-  private static int[][] createRandomBoard(int n) {
-    var randomBoard = new int[n][n];
-    for (int i = 0; i < n; i++) {
-      for (int j = 0; j < n; j++) {
-        randomBoard[i][j] = j + 1;
-      }
-      shuffleArray(randomBoard[i]);
+  private static int[][] createRandomBoardWithValidRows() {
+    var randomBoard = new int[N][N];
+    for (int i = 0; i < N; i++) {
+      int length = validRows[i].length;
+      int validRow = validRows[i][RANDOM.nextInt(length)];
+      randomBoard[i] = permutationsWithoutRepeats[validRow];
     }
     return randomBoard;
   }
@@ -290,14 +212,5 @@ public class SkyScrapers {
     int temp = array[j];
     array[j] = array[i];
     array[i] = temp;
-  }
-
-  private static int[][] cloneArray(int[][] src) {
-    int length = src.length;
-    int[][] target = new int[length][src[0].length];
-    for (int i = 0; i < length; i++) {
-      System.arraycopy(src[i], 0, target[i], 0, src[i].length);
-    }
-    return target;
   }
 }
