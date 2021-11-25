@@ -17,18 +17,22 @@ public class SkyScrapers {
   private static int[][] permutationsWithoutRepeats;
   private static int[][] validRows;
   private static List<Map<int[], Integer>> columnErrors;
-  private static int[] TEMP_COLUMN;
   private static int N;
 
   static int[][] solvePuzzle(int[] clues) {
     N = clues.length / 4;
-    TEMP_COLUMN = new int[N];
     permutationsWithoutRepeats = calculatePermutationsWithoutRepeats();
     validRows = calculateValidRows(clues);
     columnErrors = new ArrayList<>(N);
     IntStream.range(0, N).forEach(i -> columnErrors.add(new HashMap<>()));
     var board = createRandomBoardWithValidRows();
-    return getSolution(clues, new int[N][N], 0);
+    while (true) {
+      int errors = calculateErrors(board, clues);
+      if (errors == 0) {
+        return board;
+      }
+      board = minimizeConflicts(board, errors,clues);
+    }
   }
 
   private static int[][] calculateValidRows(int[] clues) {
@@ -103,7 +107,7 @@ public class SkyScrapers {
     return bestBoards.get(RANDOM.nextInt(size));
   }
 
-  public static int[][] getSolution(int[] clues, int[][] board, int row) {
+  public static int[][] tryAllCombinations(int[] clues, int[][] board, int row) {
     for (int validRow : validRows[row]) {
       int[][] newBoard = copyBoard(board);
       newBoard[row] = permutationsWithoutRepeats[validRow];
@@ -113,7 +117,7 @@ public class SkyScrapers {
           return newBoard;
         }
       } else {
-        int[][] newSolution = getSolution(clues, newBoard, row + 1);
+        int[][] newSolution = tryAllCombinations(clues, newBoard, row + 1);
         if (newSolution != null) {
           return newSolution;
         }
@@ -179,13 +183,14 @@ public class SkyScrapers {
   private static int calculateErrors(int[][] solution, int[] clues) {
     int errors = 0;
     for (int col = 0; col < N; col++) {
+      int[] column = new int[N];
       for (int row = 0; row < N; row++) {
-        TEMP_COLUMN[row] = solution[row][col];
+        column[row] = solution[row][col];
       }
       int forwards = clues[col];
       int backwards = clues[N * 3 - col - 1];
-      int colErrors = columnErrors.get(col).computeIfAbsent(TEMP_COLUMN,
-          a -> calculateLineErrors(TEMP_COLUMN, forwards, backwards));
+      int colErrors = columnErrors.get(col).computeIfAbsent(column,
+          a -> calculateLineErrors(column, forwards, backwards));
       errors += colErrors;
     }
     return errors;
@@ -199,18 +204,5 @@ public class SkyScrapers {
       randomBoard[i] = permutationsWithoutRepeats[validRow];
     }
     return randomBoard;
-  }
-
-  private static void shuffleArray(int[] array) {
-    for (int i = array.length - 1; i > 0; i--) {
-      int index = RANDOM.nextInt(i + 1);
-      swap(array, index, i);
-    }
-  }
-
-  private static void swap(int[] array, int i, int j) {
-    int temp = array[j];
-    array[j] = array[i];
-    array[i] = temp;
   }
 }
